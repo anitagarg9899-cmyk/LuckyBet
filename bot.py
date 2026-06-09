@@ -5,6 +5,9 @@ import json
 import os
 from datetime import datetime
 
+# Debug/version stamp for redeploy detection
+VERSION = "v1.1-redeploy-2026-06-09T11:15:00Z"
+
 # Initialize bot
 intents = discord.Intents.default()
 intents.message_content = True
@@ -89,7 +92,8 @@ def convert_points_to_usd(points):
 
 @bot.event
 async def on_ready():
-    print(f'{bot.user} has connected to Discord!')
+    # Print a visible version stamp so we can confirm which commit is running
+    print(f'{bot.user} has connected to Discord! -- {VERSION}')
     print('------')
 
 @bot.command(name='balance', help='Check your current balance')
@@ -114,8 +118,11 @@ async def price(ctx, amount: int = None):
             color=discord.Color.blue()
         )
         
-        price_text = "```\nPoints                  R$         USD\n"
-        price_text += "--------------------------------------\n"
+        price_text = "```
+Points                  R$         USD
+"
+        price_text += "--------------------------------------
+"
         
         for points, usd in CURRENCY_RATES.items():
             real_value = f"R${points:,}"
