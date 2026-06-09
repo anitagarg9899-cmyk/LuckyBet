@@ -10,10 +10,20 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='.', intents=intents)
 
 # Database file for user balances
 DB_FILE = 'user_data.json'
+
+# Currency conversion rates (Points to USD)
+CURRENCY_RATES = {
+    1: 0.0037,
+    100: 0.37,
+    1000: 3.70,
+    10000: 37.00,
+    100000: 370.00,
+    1000000: 3700.00
+}
 
 def load_data():
     """Load user data from JSON file"""
@@ -55,6 +65,28 @@ def add_to_stats(user_id, result, wager):
         data[user_id_str]['stats']['losses'] += 1
     save_data(data)
 
+def convert_points_to_usd(points):
+    """Convert points to USD based on conversion rates"""
+    # Find the best matching rate
+    sorted_rates = sorted(CURRENCY_RATES.keys())
+    
+    if points < sorted_rates[0]:
+        # Less than 1 point
+        rate = CURRENCY_RATES[sorted_rates[0]] / sorted_rates[0]
+        return points * rate
+    
+    for i, key in enumerate(sorted_rates):
+        if points == key:
+            return CURRENCY_RATES[key]
+        elif i < len(sorted_rates) - 1 and sorted_rates[i] < points < sorted_rates[i + 1]:
+            # Interpolate between rates
+            rate = CURRENCY_RATES[key] / key
+            return points * rate
+    
+    # Greater than largest amount - use the last rate
+    rate = CURRENCY_RATES[sorted_rates[-1]] / sorted_rates[-1]
+    return points * rate
+
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
@@ -71,7 +103,49 @@ async def balance(ctx):
     )
     await ctx.send(embed=embed)
 
-@bot.command(name='coinflip', help='Flip a coin! Usage: !coinflip <amount> <heads/tails>')
+@bot.command(name='price', help='Convert LuckyBucks to USD! Usage: .price <amount>')
+async def price(ctx, amount: int = None):
+    """Convert points to USD"""
+    if amount is None:
+        # Show price table
+        embed = discord.Embed(
+            title="💵 LuckyBet Price Table",
+            description="Conversion rates from LuckyBucks to USD",
+            color=discord.Color.blue()
+        )
+        
+        price_text = "```\nPoints                  R$         USD\n"
+        price_text += "--------------------------------------\n"
+        
+        for points, usd in CURRENCY_RATES.items():
+            real_value = f"R${points:,}"
+            price_text += f"{points:<20} {real_value:<13} ${usd:.2f}\n"
+        
+        price_text += "```"
+        
+        embed.description = price_text
+        await ctx.send(embed=embed)
+        return
+    
+    if amount <= 0:
+        await ctx.send("❌ Amount must be positive!")
+        return
+    
+    # Convert specific amount
+    usd_value = convert_points_to_usd(amount)
+    real_value = amount  # If you have a different exchange rate, update this
+    
+    embed = discord.Embed(
+        title="💱 Price Conversion",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="LuckyBucks", value=f"**{amount:,}** points", inline=True)
+    embed.add_field(name="Brazilian Real", value=f"**R${amount:,.2f}**", inline=True)
+    embed.add_field(name="USD", value=f"**${usd_value:.2f}**", inline=True)
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='coinflip', help='Flip a coin! Usage: .coinflip <amount> <heads/tails>')
 async def coinflip(ctx, amount: int, choice: str):
     """Coin flip game"""
     user_balance = get_user_balance(ctx.author.id)
@@ -117,7 +191,7 @@ async def coinflip(ctx, amount: int, choice: str):
     set_user_balance(ctx.author.id, new_balance)
     await ctx.send(embed=embed)
 
-@bot.command(name='dice', help='Roll dice! Usage: !dice <amount> <1-6>')
+@bot.command(name='dice', help='Roll dice! Usage: .dice <amount> <1-6>')
 async def dice(ctx, amount: int, guess: int):
     """Dice roll game"""
     user_balance = get_user_balance(ctx.author.id)
@@ -162,7 +236,7 @@ async def dice(ctx, amount: int, guess: int):
     set_user_balance(ctx.author.id, new_balance)
     await ctx.send(embed=embed)
 
-@bot.command(name='slots', help='Play slot machine! Usage: !slots <amount>')
+@bot.command(name='slots', help='Play slot machine! Usage: .slots <amount>')
 async def slots(ctx, amount: int):
     """Slot machine game"""
     user_balance = get_user_balance(ctx.author.id)
@@ -216,7 +290,7 @@ async def slots(ctx, amount: int):
     set_user_balance(ctx.author.id, new_balance)
     await ctx.send(embed=embed)
 
-@bot.command(name='roulette', help='Play roulette! Usage: !roulette <amount> <red/black/even/odd>')
+@bot.command(name='roulette', help='Play roulette! Usage: .roulette <amount> <red/black/even/odd>')
 async def roulette(ctx, amount: int, choice: str):
     """Roulette game"""
     user_balance = get_user_balance(ctx.author.id)
@@ -273,7 +347,7 @@ async def roulette(ctx, amount: int, choice: str):
     set_user_balance(ctx.author.id, new_balance)
     await ctx.send(embed=embed)
 
-@bot.command(name='blackjack', help='Play blackjack! Usage: !blackjack <amount>')
+@bot.command(name='blackjack', help='Play blackjack! Usage: .blackjack <amount>')
 async def blackjack(ctx, amount: int):
     """Blackjack game"""
     user_balance = get_user_balance(ctx.author.id)
@@ -434,14 +508,16 @@ async def help_command(ctx):
         title="🎰 LuckyBet Bot - Commands",
         color=discord.Color.purple()
     )
-    embed.add_field(name="!balance", value="Check your current balance", inline=False)
-    embed.add_field(name="!coinflip <amount> <heads/tails>", value="Flip a coin (1:1 odds)", inline=False)
-    embed.add_field(name="!dice <amount> <1-6>", value="Roll a dice (5:1 payout)", inline=False)
-    embed.add_field(name="!slots <amount>", value="Play slot machine", inline=False)
-    embed.add_field(name="!roulette <amount> <red/black/even/odd>", value="Play roulette (2:1 payout)", inline=False)
-    embed.add_field(name="!blackjack <amount>", value="Play blackjack (2:1 payout)", inline=False)
-    embed.add_field(name="!leaderboard", value="View top 10 players", inline=False)
-    embed.add_field(name="!stats", value="View your personal statistics", inline=False)
+    embed.add_field(name=".balance", value="Check your current balance", inline=False)
+    embed.add_field(name=".price", value="View price table", inline=False)
+    embed.add_field(name=".price <amount>", value="Convert LuckyBucks to USD", inline=False)
+    embed.add_field(name=".coinflip <amount> <heads/tails>", value="Flip a coin (1:1 odds)", inline=False)
+    embed.add_field(name=".dice <amount> <1-6>", value="Roll a dice (5:1 payout)", inline=False)
+    embed.add_field(name=".slots <amount>", value="Play slot machine", inline=False)
+    embed.add_field(name=".roulette <amount> <red/black/even/odd>", value="Play roulette (2:1 payout)", inline=False)
+    embed.add_field(name=".blackjack <amount>", value="Play blackjack (2:1 payout)", inline=False)
+    embed.add_field(name=".leaderboard", value="View top 10 players", inline=False)
+    embed.add_field(name=".stats", value="View your personal statistics", inline=False)
     embed.add_field(name="Starting Balance", value="Everyone starts with $1000", inline=False)
     
     await ctx.send(embed=embed)
